@@ -26,11 +26,7 @@ class PKCS12Generator extends AbstractGenerator
 	public function __construct( IProfileData $profileData, array $authenticationMethods, string $password = '' )
 	{
 		parent::__construct( $profileData, $authenticationMethods );
-		if ( empty($password) ) {
-			$this->password = 'pkcs12';
-		} else {
-			$this->password = $password;
-		}
+		$this->password = $password;
 	}
 
 	/**
