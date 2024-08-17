@@ -23,8 +23,6 @@ use fyrkat\oauth\token\Grant;
 use fyrkat\oauth\token\RefreshToken;
 
 use fyrkat\openssl\PKCS7;
-use fyrkat\openssl\PrivateKey;
-use fyrkat\openssl\X509;
 
 use letswifi\browserauth\BrowserAuthInterface;
 
@@ -149,7 +147,7 @@ class LetsWifiApp
 			$params = \array_merge( $params, $realmParams[$realm->getName()] );
 		}
 
-		if ( !\preg_match( '/[A-Z][A-Za-z0-9]+/', $service ) ) {
+		if ( !\preg_match( '/^[A-Z][A-Za-z0-9]+$/', $service ) ) {
 			throw new DomainException( 'Illegal auth.service specified in config' );
 		}
 		$service = 'letswifi\\browserauth\\' . $service;
@@ -193,22 +191,20 @@ class LetsWifiApp
 			} else {
 				throw new RuntimeException( 'File specified in signing.cert does not exist, please migrate to profile.signing.cert' );
 			}
-
-			$signingKey = $signingCert;
 		} else {
 			$signingCert = $this->config->getStringOrNull( 'profile.signing.cert' );
-			$signingKey = $this->config->getStringOrNull( 'profile.signing.key' ) ?? $signingCert;
+			$signingKey = $this->config->getStringOrNull( 'profile.signing.key' );
+			if ( null !== $signingCert && null !== $signingKey ) {
+				$signingCert .= "\n${signingKey}";
+			}
 		}
-		if ( null === $signingKey || null === $signingCert ) {
+		if ( null === $signingCert ) {
 			return null;
 		}
 
 		$passphrase = $this->config->getStringOrNull( 'profile.signing.passphrase' );
 
-		$certificate = new X509( $signingCert );
-		$key = new PrivateKey( $signingKey, $passphrase );
-
-		return new PKCS7( $certificate, $key );
+		return PKCS7::readChainPEM( $signingCert, $passphrase );
 	}
 
 	/**
@@ -257,14 +253,6 @@ class LetsWifiApp
 		return $this->realmManager;
 	}
 
-	public function guessRealm( Realm $baseRealm ): ?Realm
-	{
-		$auth = $this->getBrowserAuthenticator( $baseRealm );
-		$guess = $auth->guessRealm( $this->config->getArrayOrEmpty( 'realm.auth' ) );
-
-		return $guess ? $this->getRealm( $guess ) : null;
-	}
-
 	public function registerExceptionHandler(): void
 	{
 		\set_exception_handler( [$this, 'handleException'] );
@@ -290,7 +278,7 @@ class LetsWifiApp
 	{
 		if ( null === $template || \array_key_exists( 'json', $_GET ) || !$this->isBrowser() ) {
 			\header( 'Content-Type: application/json' );
-			exit( \json_encode( $data, \JSON_UNESCAPED_SLASHES ) );
+			exit( \json_encode( $data, \JSON_UNESCAPED_SLASHES ) . "\r\n" );
 		}
 		$template = $this->getTwig()->load( "${template}.html" );
 		exit( $template->render( ['_basePath' => $basePath] + $data ) );
@@ -337,7 +325,6 @@ class LetsWifiApp
 	private function getCurrentRealmName(): string
 	{
 		switch ( $this->config->getStringOrNull( 'realm.selector' ) ) {
-			case 'getparam': return $this->getCurrentRealmNameFromGetParam();
 			case 'httphost': return $this->getCurrentRealmNameFromHttpHost();
 			default: return $this->config->getString( 'realm.default' );
 		}
@@ -352,16 +339,5 @@ class LetsWifiApp
 		}
 
 		return $realm;
-	}
-
-	private function getCurrentRealmNameFromGetParam(): string
-	{
-		if ( !\array_key_exists( 'realm', $_GET ) ) {
-			throw new RuntimeException( 'No realm set' );
-		}
-		if ( \is_string( $_GET['realm'] ) ) {
-			return $_GET['realm'];
-		}
-		throw new RuntimeException( 'realm parameter must be string' );
 	}
 }

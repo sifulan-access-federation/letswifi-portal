@@ -1,5 +1,8 @@
 
 REALM := example.com
+PHP := php
+SIMPLESAMLPHP_VERSION := 2.2.1
+SIMPLESAMLPHP_FLAVOUR := slim
 
 camera-ready-dev: camera-ready dev
 .PHONY: camera-ready-dev
@@ -9,7 +12,7 @@ camera-ready: syntax codestyle phpunit psalm phan
 
 dev: check-php etc/letswifi.conf.php vendor
 	@test -f var/letswifi-dev.sqlite || make var/letswifi-dev.sqlite
-	php -S [::1]:1080 -t www/
+	$(PHP) -S [::1]:1080 -t www/
 .PHONY: dev
 
 clean:
@@ -28,10 +31,10 @@ composer.phar:
 vendor: composer.json check-php composer.phar
 	# Some dev dependencies have very strict PHP requirements
 	# Allowing running --no-dev to work around this
-	php composer.phar install || php composer.phar install --no-dev
+	$(PHP) composer.phar install || $(PHP) composer.phar install --no-dev
 
 composer.lock: composer.json check-php composer.phar
-	php composer.phar update
+	$(PHP) composer.phar update
 
 etc/letswifi.conf.php:
 	cp etc/letswifi.conf.dist.php etc/letswifi.conf.php
@@ -45,37 +48,37 @@ var:
 var/letswifi-dev.sqlite: var
 	rm -f var/letswifi-dev.sqlite
 	sqlite3 var/letswifi-dev.sqlite <sql/letswifi.sqlite.sql
-	php bin/add-realm.php $(REALM) 1 || { rm var/letswifi-dev.sqlite && false; }
+	$(PHP) bin/add-realm.php $(REALM) 1 || { rm var/letswifi-dev.sqlite && false; }
 
 simplesamlphp:
-	cp -n etc/letswifi.conf.simplesaml.php etc/letswifi.conf.php
-	curl -sSL https://github.com/simplesamlphp/simplesamlphp/releases/download/v1.18.8/simplesamlphp-1.18.8.tar.gz | tar xz
-	ln -s ../simplesamlphp/www/ www/simplesaml || true
-	ln -s simplesamlphp-1.18.8/ simplesamlphp || true
+	-cp -n etc/letswifi.conf.simplesaml.php etc/letswifi.conf.php
+	curl -sSL https://github.com/simplesamlphp/simplesamlphp/releases/download/v$(SIMPLESAMLPHP_VERSION)/simplesamlphp-$(SIMPLESAMLPHP_VERSION)-$(SIMPLESAMLPHP_FLAVOUR).tar.gz | tar xzf -
+	ln -sf simplesamlphp-$(SIMPLESAMLPHP_VERSION)/ simplesamlphp || true
+	ln -sf ../simplesamlphp/public/ www/simplesaml || true
 
 
 # Code formatters, static code sniffers etc.
 
 check-php:
-	@php -r 'exit(json_decode("true") === true ? 0 : 1);'
+	@$(PHP) -r 'exit(json_decode("true") === true ? 0 : 1);'
 .PHONY: check-php
 
 psalm: vendor
-	php vendor/bin/psalm --no-cache
+	$(PHP) vendor/bin/psalm --no-cache
 .PHONY: psalm
 
 phan: vendor
-	php vendor/bin/phan --allow-polyfill-parser --no-progress-bar
+	$(PHP) vendor/bin/phan --allow-polyfill-parser --no-progress-bar
 .PHONY: phan
 
 codestyle: vendor
-	php vendor/bin/php-cs-fixer fix
+	$(PHP) vendor/bin/php-cs-fixer fix
 .PHONY: codestyle
 
 phpunit: vendor
-	php vendor/bin/phpunit
+	$(PHP) vendor/bin/phpunit
 .PHONY: phpunit
 
 syntax: check-php
-	find . ! -path './vendor/*' ! -path './simplesaml*' ! -path './lib/*' -type f -name \*.php -print0 | xargs -0 -n1 -P50 php -l
+	find . ! -path './vendor/*' ! -path './simplesaml*' ! -path './lib/*' -type f -name \*.php -print0 | xargs -0 -n1 -P50 $(PHP) -l
 .PHONY: syntax
