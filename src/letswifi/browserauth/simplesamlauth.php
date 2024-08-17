@@ -10,9 +10,9 @@
 
 namespace letswifi\browserauth;
 
+use DomainException;
 use Exception;
 use OutOfBoundsException;
-use Throwable;
 
 class SimpleSAMLAuth implements BrowserAuthInterface
 {
@@ -30,7 +30,7 @@ class SimpleSAMLAuth implements BrowserAuthInterface
 	/** @var array<string> */
 	protected $authzAttributeValue;
 
-	/** @var array<string>|?string */
+	/** @var ?array<string> */
 	protected $allowedHomeOrg;
 
 	/** @var string */
@@ -73,17 +73,23 @@ class SimpleSAMLAuth implements BrowserAuthInterface
 		$idpList = $params['idpList'] ?? [];
 		$verifyAuthenticatingAuthority = $params['verifyAuthenticatingAuthority'] ?? true;
 		$authzAttributeValue = $params['authzAttributeValue'] ?? [];
-		$allowedHomeOrg = $params['allowedHomeOrg'] ?? $params['feideHomeOrg'] ?? null;
-		$homeOrgAttribute = $params['homeOrgAttribute'] ?? $params['feideOrgAttribute'] ?? 'schacHomeOrganization';
+		$allowedHomeOrg = $params['allowedHomeOrg'] ?? null;
+		$homeOrgAttribute = $params['homeOrgAttribute'] ?? 'schacHomeOrganization';
 
 		\assert( \is_string( $userIdAttribute ), 'userIdAttribute must be string' );
-		\assert( \is_string( $realmSelectorAttribute ), 'realmSelectorAttribute must be string' );
+		\assert(
+			\is_string( $realmSelectorAttribute ) || null === $realmSelectorAttribute,
+			'realmSelectorAttribute must be string if provided',
+		);
 		\assert( \is_array( $realmMap ), 'realmMap must be array' );
 		\assert( \is_string( $samlIdp ) || null === $samlIdp, 'samlIdp must be string if provided' );
 		\assert( \is_array( $idpList ), 'idpList must be array if provided' );
 		\assert( \is_array( $authzAttributeValue ), 'authzAttributeValue must be array if provided' );
 		\assert( \is_bool( $verifyAuthenticatingAuthority ), 'verifyAuthenticatingAuthority must be a boolean if provided' );
-		\assert( \is_string( $allowedHomeOrg ) || \is_array( $allowedHomeOrg ), 'allowedHomeOrg must be string or array if provided' );
+		\assert(
+			\is_string( $allowedHomeOrg ) || \is_array( $allowedHomeOrg ) || null === $allowedHomeOrg,
+			'allowedHomeOrg must be string or array if provided',
+		);
 		\assert( \is_string( $homeOrgAttribute ), 'homeOrgAttribute must be string if provided' );
 
 		$this->samlIdp = $samlIdp;
@@ -94,7 +100,7 @@ class SimpleSAMLAuth implements BrowserAuthInterface
 		$this->userIdAttribute = $userIdAttribute;
 		$this->realmSelectorAttribute = $realmSelectorAttribute;
 		$this->realmMap = $realmMap;
-		$this->allowedHomeOrg = $allowedHomeOrg;
+		$this->allowedHomeOrg = \is_string( $allowedHomeOrg ) ? [$allowedHomeOrg] : $allowedHomeOrg;
 		$this->homeOrgAttribute = $homeOrgAttribute;
 	}
 
@@ -141,6 +147,9 @@ class SimpleSAMLAuth implements BrowserAuthInterface
 			// we use the old value field accessor.
 
 			$nameID = $this->as->getAuthData( 'saml:sp:NameID' );
+			if ( null === $nameID ) {
+				throw new DomainException( 'NameID not present in SAML assertion' );
+			}
 			if ( \method_exists( $nameID, 'getValue' ) ) {
 				return $nameID->getValue();
 			}
@@ -289,32 +298,6 @@ class SimpleSAMLAuth implements BrowserAuthInterface
 		return $this->as->getLogoutURL( $redirect );
 	}
 
-	/**
-	 * @suppress PhanUndeclaredClassMethod We don't have a dependency on SimpleSAMLphp
-	 */
-	public function guessRealm( array $params ): ?string
-	{
-		$providedIdP = $this->as->getAuthData( 'saml:sp:IdP' );
-		/** @var ?string */
-		$result = null;
-		foreach ( $params as $candidate => $p ) {
-			try {
-				if ( \array_key_exists( 'samlIdp', $p ) ) {
-					static::checkIdP( $p['samlIdp'], $providedIdP );
-					if ( null !== $result ) {
-						return null;
-					}
-
-					$result = $candidate;
-				}
-			} catch ( Throwable $_ ) {
-				/* we're guessing so no need to handle */
-			}
-		}
-
-		return $result;
-	}
-
 	protected function verifyHomeOrganization(): void
 	{
 		if ( isset( $this->allowedHomeOrg ) ) {
@@ -322,14 +305,10 @@ class SimpleSAMLAuth implements BrowserAuthInterface
 			$orgs = $this->getMultiAttributeValue( $this->homeOrgAttribute );
 
 			foreach ( $orgs as $org ) {
-				if ( \is_array( $this->allowedHomeOrg ) ) {
-					foreach ( $this->allowedHomeOrg as $homeOrg ) {
-						if ( $org === $homeOrg ) {
-							return;
-						}
+				foreach ( $this->allowedHomeOrg as $homeOrg ) {
+					if ( $org === $homeOrg ) {
+						return;
 					}
-				} elseif ( $org === $this->allowedHomeOrg ) {
-					return;
 				}
 			}
 

@@ -10,8 +10,6 @@
 
 namespace letswifi\browserauth;
 
-use Throwable;
-
 class SimpleSAMLFeideAuth extends SimpleSAMLAuth
 {
 	/** @var string */
@@ -19,6 +17,12 @@ class SimpleSAMLFeideAuth extends SimpleSAMLAuth
 
 	public function __construct( array $params )
 	{
+		if ( \array_key_exists( 'feideHomeOrg', $params ) && !\array_key_exists( 'allowedHomeOrg', $params ) ) {
+			$params['allowedHomeOrg'] = $params['feideHomeOrg'];
+		}
+		if ( \array_key_exists( 'feideOrgAttribute', $params ) && !\array_key_exists( 'homeOrgAttribute', $params ) ) {
+			$params['homeOrgAttribute'] = $params['feideOrgAttribute'];
+		}
 		parent::__construct( $params );
 		$feideHostname = $params['feideHostname'] ?? 'idp.feide.no';
 		\assert( \is_string( $feideHostname ), 'feideHostname must be string' );
@@ -40,22 +44,5 @@ class SimpleSAMLFeideAuth extends SimpleSAMLAuth
 		}
 
 		return parent::requireAuth();
-	}
-
-	public function guessRealm( array $params ): ?string
-	{
-		foreach ( $params as $candidate => $p ) {
-			try {
-				if ( \array_key_exists( 'homeOrgAttribute', $p ) && \array_key_exists( 'allowedHomeOrg', $p ) ) {
-					if ( $this->getSingleAttributeValue( $p['homeOrgAttribute'] ) === $p['allowedHomeOrg'] ) {
-						return $candidate;
-					}
-				}
-			} catch ( Throwable $_ ) {
-				/* we're guessing so no need to handle */
-			}
-		}
-
-		return parent::guessRealm( $params );
 	}
 }
